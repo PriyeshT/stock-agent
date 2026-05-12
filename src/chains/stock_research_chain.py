@@ -1,38 +1,62 @@
 import os
+import requests
 from dotenv import load_dotenv
 from langchain_anthropic import ChatAnthropic
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from langchain_community.tools.tavily_search import TavilySearchResults
 
 load_dotenv()
 
 # The Claude model to use. Must match a real Anthropic API model ID.
 MODEL = "claude-sonnet-4-6"
 
+# Perplexity's "sonar" model searches the web and synthesises results in one call.
+# "sonar-pro" is more thorough but slower — fine to swap in later.
+PERPLEXITY_MODEL = "sonar"
+PERPLEXITY_API_URL = "https://api.perplexity.ai/chat/completions"
+
 # Disable LangSmith tracing if no API key is configured.
 # Prevents noisy connection errors during local development.
 if not os.getenv("LANGCHAIN_API_KEY"):
     os.environ["LANGCHAIN_TRACING_V2"] = "false"
 
-# How many search results to fetch per ticker — more results = better coverage, slower run
-MAX_SEARCH_RESULTS = 5
-
 
 def search_stock_news(ticker: str) -> str:
     """
-    Search the web for recent news about a stock ticker.
-    Returns all results joined into one string, ready to drop into a prompt.
-    Example input: "NVDA" → returns several paragraphs of recent news text.
+    Fetch recent news and analyst sentiment for a stock ticker using Perplexity.
+    Unlike a raw search API, Perplexity reads its sources and returns synthesised prose.
+    Returns the synthesised text plus source URLs, ready to pass to Claude.
     """
-    tool = TavilySearchResults(max_results=MAX_SEARCH_RESULTS)
-    results = tool.invoke(f"{ticker} stock news analysis latest")
+    api_key = os.getenv("PERPLEXITY_API_KEY")
+    if not api_key:
+        raise ValueError("PERPLEXITY_API_KEY is not set in your .env file")
 
-    lines = []
-    for r in results:
-        lines.append(f"URL: {r['url']}\n{r['content']}")
+    response = requests.post(
+        PERPLEXITY_API_URL,
+        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+        json={
+            "model": PERPLEXITY_MODEL,
+            "messages": [{
+                "role": "user",
+                "content": (
+                    f"What is the latest news and analyst sentiment for {ticker} stock? "
+                    "Focus on recent earnings, price movements, and key developments."
+                ),
+            }],
+        },
+        timeout=30,
+    )
+    response.raise_for_status()
 
-    return "\n\n---\n\n".join(lines)
+    data = response.json()
+    content = data["choices"][0]["message"]["content"]
+    citations = data.get("citations", [])
+
+    if citations:
+        sources = "\n".join(f"- {url}" for url in citations)
+        return f"{content}\n\nSources:\n{sources}"
+
+    return content
 
 
 def build_summary_prompt() -> ChatPromptTemplate:

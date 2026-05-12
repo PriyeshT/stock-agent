@@ -1,7 +1,5 @@
 # Tests for src/chains/stock_research_chain.py
-# All external API calls (Tavily, Claude) are mocked — no real network requests.
-# "Mocking" means we replace the real API call with a fake one that returns
-# a value we control, so we can test our logic in isolation.
+# All external API calls (Perplexity, Claude) are mocked — no real network requests.
 
 from unittest.mock import MagicMock, patch
 
@@ -13,34 +11,64 @@ from src.chains.stock_research_chain import (
 )
 
 
-def test_search_stock_news_formats_results() -> None:
+def _mock_perplexity_response(content: str, citations: list[str] | None = None) -> MagicMock:
     """
-    Verify that raw Tavily results are joined into one string with separators.
-    We fake the Tavily response so no real search happens.
+    Build a fake requests.Response object that looks like a Perplexity API reply.
+    This is a helper used by multiple tests below — not a test itself.
     """
-    fake_results = [
-        {"url": "https://example.com/1", "content": "NVDA beats earnings expectations."},
-        {"url": "https://example.com/2", "content": "NVDA stock rises 5% after hours."},
-    ]
-    with patch("src.chains.stock_research_chain.TavilySearchResults") as mock_tavily:
-        mock_tavily.return_value.invoke.return_value = fake_results
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
+        "choices": [{"message": {"content": content}}],
+        "citations": citations or [],
+    }
+    return mock_response
+
+
+def test_search_stock_news_returns_content() -> None:
+    """
+    Verify that the synthesised text from Perplexity is returned as-is.
+    """
+    fake_content = "NVDA beats earnings expectations. Revenue up 20%."
+
+    with patch("src.chains.stock_research_chain.requests.post") as mock_post:
+        mock_post.return_value = _mock_perplexity_response(fake_content)
         result = search_stock_news("NVDA")
 
-    assert "NVDA beats earnings expectations." in result
-    assert "NVDA stock rises 5% after hours." in result
-    assert "---" in result  # separator between results is present
+    assert fake_content in result
 
 
-def test_search_stock_news_includes_urls() -> None:
+def test_search_stock_news_appends_citations() -> None:
     """
-    Verify that each result's URL is included so the summary can cite sources.
+    Verify that source URLs are appended when Perplexity returns citations.
+    We want sources in the output so Claude's summary is grounded in real references.
     """
-    fake_results = [{"url": "https://reuters.com/nvda", "content": "Some news."}]
-    with patch("src.chains.stock_research_chain.TavilySearchResults") as mock_tavily:
-        mock_tavily.return_value.invoke.return_value = fake_results
+    fake_citations = ["https://reuters.com/nvda", "https://bloomberg.com/nvda"]
+
+    with patch("src.chains.stock_research_chain.requests.post") as mock_post:
+        mock_post.return_value = _mock_perplexity_response("Some news.", fake_citations)
         result = search_stock_news("NVDA")
 
     assert "https://reuters.com/nvda" in result
+    assert "https://bloomberg.com/nvda" in result
+
+
+def test_search_stock_news_raises_without_api_key() -> None:
+    """
+    Confirm we get a clear error message if PERPLEXITY_API_KEY is missing.
+    Better to fail loudly with a helpful message than silently return nothing.
+    """
+    with patch.dict("os.environ", {}, clear=False):
+        import os
+        original = os.environ.pop("PERPLEXITY_API_KEY", None)
+        try:
+            try:
+                search_stock_news("NVDA")
+                assert False, "Expected ValueError"
+            except ValueError as e:
+                assert "PERPLEXITY_API_KEY" in str(e)
+        finally:
+            if original:
+                os.environ["PERPLEXITY_API_KEY"] = original
 
 
 def test_build_summary_prompt_has_required_variables() -> None:
@@ -70,14 +98,12 @@ def test_research_stock_returns_string() -> None:
             result = research_stock("NVDA")
 
     assert result == fake_summary
-    # Confirm the chain received both the ticker and the news we provided
     mock_chain.invoke.assert_called_once_with({"ticker": "NVDA", "news": fake_news})
 
 
 def test_research_stock_passes_correct_ticker() -> None:
     """
     Confirm the ticker is passed through correctly — not hardcoded anywhere.
-    Regression guard: if someone accidentally hardcodes "NVDA", this catches it.
     """
     with patch("src.chains.stock_research_chain.search_stock_news", return_value="news"):
         with patch("src.chains.stock_research_chain.build_research_chain") as mock_builder:

@@ -6,8 +6,8 @@ langchain-community==0.3.24
 # LLM — Claude via Anthropic SDK (must be >=0.52.0 to match langchain-anthropic 0.3.15)
 anthropic==0.52.0
 
-# Web search
-tavily-python==0.5.1
+# Web search — Perplexity is an AI model with built-in web search (OpenAI-compatible API)
+# Uses the standard `requests` library — no extra SDK needed
 
 # Notion integration
 notion-client==2.3.0
