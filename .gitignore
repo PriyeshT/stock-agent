@@ -23,3 +23,6 @@ env/
 # Editor files
 .vscode/
 .idea/
+
+# Personal learning notes — kept local, not published
+docs/learning-notes/
