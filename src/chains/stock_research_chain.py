@@ -1,19 +1,14 @@
 import os
-import requests
 from dotenv import load_dotenv
+from perplexity import Perplexity
 from langchain_anthropic import ChatAnthropic
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
 load_dotenv()
 
-# The Claude model to use. Must match a real Anthropic API model ID.
+# The Claude model to use for the final summary step.
 MODEL = "claude-sonnet-4-6"
-
-# Perplexity's "sonar" model searches the web and synthesises results in one call.
-# "sonar-pro" is more thorough but slower — fine to swap in later.
-PERPLEXITY_MODEL = "sonar"
-PERPLEXITY_API_URL = "https://api.perplexity.ai/chat/completions"
 
 # Disable LangSmith tracing if no API key is configured.
 # Prevents noisy connection errors during local development.
@@ -23,40 +18,30 @@ if not os.getenv("LANGCHAIN_API_KEY"):
 
 def search_stock_news(ticker: str) -> str:
     """
-    Fetch recent news and analyst sentiment for a stock ticker using Perplexity.
-    Unlike a raw search API, Perplexity reads its sources and returns synthesised prose.
-    Returns the synthesised text plus source URLs, ready to pass to Claude.
+    Search for recent news about a stock ticker using the Perplexity Search API.
+    Returns structured results (title, URL, date, snippet) joined into one string
+    ready to pass to Claude as context.
     """
-    api_key = os.getenv("PERPLEXITY_API_KEY")
-    if not api_key:
+    if not os.getenv("PERPLEXITY_API_KEY"):
         raise ValueError("PERPLEXITY_API_KEY is not set in your .env file")
 
-    response = requests.post(
-        PERPLEXITY_API_URL,
-        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-        json={
-            "model": PERPLEXITY_MODEL,
-            "messages": [{
-                "role": "user",
-                "content": (
-                    f"What is the latest news and analyst sentiment for {ticker} stock? "
-                    "Focus on recent earnings, price movements, and key developments."
-                ),
-            }],
-        },
-        timeout=30,
+    client = Perplexity()
+    search = client.search.create(
+        query=f"{ticker} stock latest news earnings analyst sentiment",
+        max_results=5,
+        max_tokens_per_page=4096,
     )
-    response.raise_for_status()
 
-    data = response.json()
-    content = data["choices"][0]["message"]["content"]
-    citations = data.get("citations", [])
+    lines = []
+    for result in search.results:
+        lines.append(
+            f"Title: {result.title}\n"
+            f"URL: {result.url}\n"
+            f"Date: {result.date}\n"
+            f"{result.snippet}"
+        )
 
-    if citations:
-        sources = "\n".join(f"- {url}" for url in citations)
-        return f"{content}\n\nSources:\n{sources}"
-
-    return content
+    return "\n\n---\n\n".join(lines)
 
 
 def build_summary_prompt() -> ChatPromptTemplate:
