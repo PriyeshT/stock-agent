@@ -1,9 +1,9 @@
 import os
 from dotenv import load_dotenv
-from perplexity import Perplexity
 from langchain_anthropic import ChatAnthropic
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
+from src.tools.web_search import search_stock_news
 
 load_dotenv()
 
@@ -14,34 +14,6 @@ MODEL = "claude-sonnet-4-6"
 # Prevents noisy connection errors during local development.
 if not os.getenv("LANGCHAIN_API_KEY"):
     os.environ["LANGCHAIN_TRACING_V2"] = "false"
-
-
-def search_stock_news(ticker: str) -> str:
-    """
-    Search for recent news about a stock ticker using the Perplexity Search API.
-    Returns structured results (title, URL, date, snippet) joined into one string
-    ready to pass to Claude as context.
-    """
-    if not os.getenv("PERPLEXITY_API_KEY"):
-        raise ValueError("PERPLEXITY_API_KEY is not set in your .env file")
-
-    client = Perplexity()
-    search = client.search.create(
-        query=f"{ticker} stock latest news earnings analyst sentiment",
-        max_results=5,
-        max_tokens_per_page=4096,
-    )
-
-    lines = []
-    for result in search.results:
-        lines.append(
-            f"Title: {result.title}\n"
-            f"URL: {result.url}\n"
-            f"Date: {result.date}\n"
-            f"{result.snippet}"
-        )
-
-    return "\n\n---\n\n".join(lines)
 
 
 def build_summary_prompt() -> ChatPromptTemplate:
@@ -72,16 +44,17 @@ def build_research_chain():
     """
     llm = ChatAnthropic(model=MODEL)
     prompt = build_summary_prompt()
-    parser = StrOutputParser()  # strips the LLM response object down to a plain string
+    parser = StrOutputParser()
     return prompt | llm | parser
 
 
 def research_stock(ticker: str) -> str:
     """
     Research a single stock ticker and return a plain English summary.
-    This is the main entry point for Stage 1 — call this function with any watchlist ticker.
+    This is the main entry point — call this function with any watchlist ticker.
     Example: research_stock("NVDA") → "NVIDIA reported strong earnings..."
     """
-    news = search_stock_news(ticker)
+    # .invoke() is how you call a LangChain Tool — same method as calling a chain
+    news = search_stock_news.invoke(ticker)
     chain = build_research_chain()
     return chain.invoke({"ticker": ticker, "news": news})
