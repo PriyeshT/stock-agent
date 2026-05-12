@@ -1,0 +1,25 @@
+# Environment variables — NEVER commit real keys
+.env
+
+# Python bytecode — compiled files Python generates automatically, not needed in git
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Virtual environment — your local Python environment, not part of the project
+.venv/
+venv/
+env/
+
+# Jupyter notebook checkpoints — auto-saved drafts, not the real notebook
+.ipynb_checkpoints/
+
+# pytest cache
+.pytest_cache/
+
+# macOS finder metadata
+.DS_Store
+
+# Editor files
+.vscode/
+.idea/
