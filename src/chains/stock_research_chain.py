@@ -8,7 +8,12 @@ from langchain_community.tools.tavily_search import TavilySearchResults
 load_dotenv()
 
 # The Claude model to use. Must match a real Anthropic API model ID.
-MODEL = "claude-sonnet-4-6-20250514"
+MODEL = "claude-sonnet-4-6"
+
+# Disable LangSmith tracing if no API key is configured.
+# Prevents noisy connection errors during local development.
+if not os.getenv("LANGCHAIN_API_KEY"):
+    os.environ["LANGCHAIN_TRACING_V2"] = "false"
 
 # How many search results to fetch per ticker — more results = better coverage, slower run
 MAX_SEARCH_RESULTS = 5
