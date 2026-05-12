@@ -36,7 +36,7 @@ Learning LangChain and agentic AI patterns to advise clients credibly.
 Language:        Python 3.11+
 Agent framework: LangChain
 LLM:             Claude API — model: claude-sonnet-4-20250514
-Web search:      Tavily API
+Web search:      Perplexity API (sonar model)
 Data store:      Notion API
 Scheduling:      GitHub Actions
 Observability:   LangSmith
@@ -238,7 +238,7 @@ Experiment in: `notebooks/stage1_experiments.ipynb`
 ```bash
 # .env file — never commit this
 ANTHROPIC_API_KEY=your_key_here
-TAVILY_API_KEY=your_key_here
+PERPLEXITY_API_KEY=your_key_here
 NOTION_API_KEY=your_key_here
 NOTION_DATABASE_ID=your_portfolio_table_id
 NOTION_PARENT_PAGE_ID=your_stock_agent_root_page_id
